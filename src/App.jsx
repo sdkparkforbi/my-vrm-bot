@@ -1,0 +1,838 @@
+import { useState, useRef, useCallback, useEffect } from 'react'
+import AvatarPanel from './components/AvatarPanel'
+import ChatPanel from './components/ChatPanel'
+import AuthModal from './components/AuthModal'
+import SurveyModal from './components/SurveyModal'
+import styles from './App.module.css'
+import { getUser, clearAuth, verifyToken, newSessionId, saveChat } from './lib/api'
+import { MicRecorder, isMicRecorderSupported } from './lib/stt'
+
+// 아바타: VRoid VRM (이경영) — 브라우저에서 three-vrm 으로 직접 렌더 + 립싱크.
+// 기존 LiveAvatar(HeyGen 후속, LiveKit 기반 SaaS) 를 대체. TTS 는 middleton
+// OmniVoice 서버(/api/tts)를 쓴다 — 렌더링·TTS 모두 자체 인프라라 제로 코스트.
+
+// 봇 발화 종료 후 마이크 재개까지의 지연 (스피커 잔향이 마이크로 다시 잡히는 echo 회피)
+const ECHO_RESUME_DELAY_MS = 700
+
+function normalizeTranscript(text) {
+  return (text || '').replace(/\s+/g, ' ').trim()
+}
+
+function getUserDisplayName(user) {
+  return user?.name || user?.nickname || '사용자'
+}
+
+function getVisitCount(user) {
+  const rawCount = user?.visit_count ?? user?.visitCount ?? user?.login_count ?? user?.loginCount ?? user?.visits
+  const count = Number(rawCount)
+  return Number.isFinite(count) && count > 0 ? Math.floor(count) : 1
+}
+
+function getKoreanVisitOrdinal(count) {
+  const ones = ['', '첫', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉']
+  const compoundOnes = ['', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉']
+  const exactTens = {
+    10: '열',
+    20: '스무',
+    30: '서른',
+    40: '마흔',
+    50: '쉰',
+    60: '예순',
+    70: '일흔',
+    80: '여든',
+    90: '아흔',
+  }
+  const compoundTens = { ...exactTens, 20: '스물' }
+
+  if (count > 0 && count < 10) return `${ones[count]}번째`
+  if (count >= 10 && count < 100) {
+    const ten = Math.floor(count / 10) * 10
+    const one = count % 10
+    return one === 0 ? `${exactTens[ten]}번째` : `${compoundTens[ten]}${compoundOnes[one]}번째`
+  }
+  return `${count}번째`
+}
+
+function getVisitGreeting(user) {
+  if (!user) return ''
+  return `${getUserDisplayName(user)}님 ${getKoreanVisitOrdinal(getVisitCount(user))} 방문을 환영합니다. `
+}
+
+// 봇 이름/소개 — .env 의 VITE_BOT_NAME 으로 바꾸거나 여기서 직접 수정.
+const BOT_NAME = import.meta.env.VITE_BOT_NAME || '나의 AI 봇'
+const BOT_INTRO = import.meta.env.VITE_BOT_INTRO || '무엇이든 편하게 물어봐 주세요.'
+
+function getGreetingText(user) {
+  return (
+    '안녕하세요. ' +
+    getVisitGreeting(user) +
+    `저는 ${BOT_NAME}이에요. ` +
+    BOT_INTRO
+  )
+}
+
+function getGreetingTts(user) {
+  return getGreetingText(user)
+}
+
+function normalizeTtsText(text) {
+  if (!text) return ''
+
+  return String(text)
+    .replace(/😊|😀|😃|😄|😁|🙂|😉|👍|🙏|✨|💡|📌|🎓|📷|🎙|🎤|▶|■|◉/g, '')
+    .replace(/\bAI\b/gi, '에이아이')
+    .replace(/\bGPT\b/gi, '지피티')
+    .replace(/\bAPI\b/gi, '에이피아이')
+    .replace(/\bURL\b/gi, '유알엘')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export default function App() {
+  const [status, setStatus]             = useState('idle')   // idle | connecting | connected | speaking
+  const [messages, setMessages]         = useState([])
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [videoReady, setVideoReady]     = useState(false)    // VRM 로드 완료 여부
+  const [isListening, setIsListening]   = useState(false)
+  const [autoListen, setAutoListen]     = useState(false)
+  const [user, setUser]                 = useState(getUser())     // 로그인된 사용자 (없으면 null = 익명)
+  const [conversationMode, setConversationMode] = useState('ftf')  // ftf | sts | ttt
+  const [theme, setTheme]               = useState(() => {
+    if (typeof window === 'undefined') return 'light'
+    return localStorage.getItem('theme') === 'dark' ? 'dark' : 'light'
+  })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'))
+  }, [])
+  const [cameraStream, setCameraStream] = useState(null)
+  // 첫 접속 시 자동으로 로그인 모달 — 저장된 토큰(=user)이 있으면 안 띄움
+  const [authOpen, setAuthOpen]         = useState(() => !getUser())
+  const [surveyOpen, setSurveyOpen]     = useState(false)
+  const [surveySessionId, setSurveySessionId] = useState(null)
+  const [surveyModesUsed, setSurveyModesUsed] = useState([])
+  const modesUsedRef = useRef(new Set())   // 세션 동안 실제 사용된 모드 누적
+  const userTurnCountRef = useRef(0)       // 사용자 발화 턴 수 (3턴 이상일 때만 설문 노출)
+  const lastEndedSessionIdRef = useRef(null) // 종료 직후 헤더 "설문" 버튼이 마지막 세션을 참조하도록 보존
+  const lastEndedModesRef = useRef([])
+
+  const vrmAvatarRef      = useRef(null)   // <VRMAvatar> imperative handle (speak/stopSpeaking/...)
+  const sessionRef        = useRef(null)   // 아바타 세션 활성 플래그 (ftf/sts true, idle/ttt null)
+  const userVideoRef      = useRef(null)
+  const cameraStreamRef   = useRef(null)
+  const historyRef        = useRef([])
+
+  // ─── TTS 큐 (streaming 응답을 문장 단위로 순차 재생) ───
+  // sendMessageStream 이 문장 boundary 만날 때마다 enqueueTTS(sentence) 호출.
+  // 큐 프로세서가 fetch /api/tts + vrmAvatar.speak() 를 순차 실행.
+  // ESC 인터럽트 시 clearTTSQueue() 로 큐 비우고 진행 중인 음성 중단.
+  const ttsQueueRef       = useRef([])     // 대기 중인 문장 배열
+  const ttsRunningRef     = useRef(false)  // 프로세서 동작 중?
+  const ttsAbortRef       = useRef(false)  // 인터럽트 플래그
+  const sessionIdRef      = useRef(null)   // 학교 DB용 세션 ID (아바타 시작 시 새로)
+  const conversationModeRef = useRef('ftf')
+
+  // 토큰 검증 — 성공하면 모달 닫음 / 실패하면 모달 유지 (이미 열려있음)
+  useEffect(() => {
+    verifyToken().then(u => {
+      if (u) {
+        setUser(u)
+        setAuthOpen(false)
+      }
+    })
+  }, [])
+
+  const handleLogout = () => {
+    clearAuth()
+    setUser(null)
+  }
+
+  const handleAvatarReady = useCallback(() => {
+    setVideoReady(true)
+  }, [])
+
+  // ─── STT (middleton whisper 기반 MicRecorder) ────────────────────────
+  // 기존 Web Speech API(webkitSpeechRecognition)는 iOS Safari / 카카오 in-app
+  // 브라우저에서 불안정 → MediaRecorder + RMS VAD로 발화 구간을 잡아 우리 whisper
+  // 서버로 보내는 방식으로 교체. echo guard는 status 기반 pause/resume로 단순화.
+  const micRecorderRef    = useRef(null)
+  const isSpeakingRef     = useRef(false)
+  const isProcessingRef   = useRef(false)
+  const autoListenRef     = useRef(false)
+  const isListeningRef    = useRef(false)
+  const echoResumeTimerRef = useRef(null)
+  const lastSubmittedSpeechRef = useRef({ key: '', at: 0 })
+
+  useEffect(() => { isProcessingRef.current = isProcessing }, [isProcessing])
+  useEffect(() => { autoListenRef.current   = autoListen }, [autoListen])
+  useEffect(() => { isListeningRef.current  = isListening }, [isListening])
+  useEffect(() => { isSpeakingRef.current   = (status === 'speaking') }, [status])
+  useEffect(() => {
+    conversationModeRef.current = conversationMode
+    if (conversationMode) modesUsedRef.current.add(conversationMode)
+  }, [conversationMode])
+
+  useEffect(() => {
+    if (userVideoRef.current) userVideoRef.current.srcObject = cameraStream || null
+  }, [cameraStream])
+
+  const stopUserCamera = useCallback(() => {
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach(track => track.stop())
+      cameraStreamRef.current = null
+    }
+    setCameraStream(null)
+  }, [])
+
+  // 카메라 프레임 1장 캡처 → JPEG data URL (없으면 null)
+  // 640x480 / quality 0.7 → 약 30KB. 매 사용자 발화 시점에 1장 캡처 후 백엔드 vision LLM에 첨부.
+  const captureCameraFrame = useCallback(() => {
+    const video = userVideoRef.current
+    if (!video || !cameraStreamRef.current) return null
+    if (!video.videoWidth || !video.videoHeight) return null
+    try {
+      const W = 640, H = 480
+      const canvas = document.createElement('canvas')
+      canvas.width = W
+      canvas.height = H
+      canvas.getContext('2d').drawImage(video, 0, 0, W, H)
+      return canvas.toDataURL('image/jpeg', 0.7)
+    } catch (e) {
+      console.warn('[captureCameraFrame] failed:', e)
+      return null
+    }
+  }, [])
+
+  const startUserCamera = useCallback(async () => {
+    if (cameraStreamRef.current) return true
+    if (!navigator.mediaDevices?.getUserMedia) {
+      alert('이 브라우저는 카메라 연결을 지원하지 않아요.')
+      return false
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user' },
+        audio: false
+      })
+      cameraStreamRef.current = stream
+      setCameraStream(stream)
+      return true
+    } catch {
+      alert('카메라 권한이 필요해요. 브라우저 주소창 왼쪽의 자물쇠 아이콘에서 카메라를 허용해주세요.')
+      return false
+    }
+  }, [])
+
+  useEffect(() => () => stopUserCamera(), [stopUserCamera])
+
+  // ─── TTS sanitize (스트리밍 chunk 단위) ───────────────────
+  // 백엔드가 plain text streaming 으로 바뀌어 ttsReply 후처리가 사라졌으므로
+  // 프론트에서 한다. 모델이 system prompt 지시 어기고 URL/전화/이메일을 본문에
+  // 박았을 때를 위한 safety net 만 처리 — 정상적으론 contact 카드로 따로 가야 함.
+  const sanitizeForTTS = (s) => {
+    if (!s) return ''
+    return s
+      .replace(/https?:\/\/[^\s)\]]+/gi, '학과 홈페이지')
+      .replace(/\bwww\.[^\s)\]]+/gi, '학과 홈페이지')
+      .replace(/\b1899[-\s]?\d{4}\b/g, '학교 대표 번호')
+      .replace(/\b0\d{1,2}[-\s]?\d{3,4}[-\s]?\d{4}\b/g, '학과 사무실')
+      .replace(/\b\d{3,4}[-\s]?\d{4}\b/g, '학과 사무실')
+      .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '학과 이메일')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
+  }
+
+  // ─── TTS 큐 프로세서 (parallel pre-fetch 버전) ────────────────
+  // 큐에는 Promise<ArrayBuffer> 가 들어있다. enqueueTTS 가 fetch 를 즉시 시작
+  // 하므로, 문장 N 재생 중에 문장 N+1, N+2 TTS 가 병렬로 진행됨.
+  // → 문장 사이 침묵 ~1초 → ~50-100ms (audio context 스케줄링 한계)
+  const processTTSQueue = useCallback(async () => {
+    if (ttsRunningRef.current) return
+    ttsRunningRef.current = true
+    const avatar = vrmAvatarRef.current
+
+    try {
+      while (ttsQueueRef.current.length > 0 && !ttsAbortRef.current) {
+        const bufPromise = ttsQueueRef.current.shift()
+        if (!bufPromise) continue
+
+        let buf
+        try {
+          buf = await bufPromise   // 이미 완료됐으면 즉시 resolve
+        } catch (e) {
+          console.warn('[tts queue] fetch fail:', e)
+          continue
+        }
+
+        if (ttsAbortRef.current) break
+
+        // 첫 문장 재생 시작 시 status=speaking 진입
+        if (!isSpeakingRef.current) {
+          isSpeakingRef.current = true
+          setStatus('speaking')
+        }
+
+        if (avatar && avatar.speak) {
+          await avatar.speak(buf)
+        }
+      }
+    } finally {
+      ttsRunningRef.current = false
+      ttsAbortRef.current = false
+      if (isSpeakingRef.current && ttsQueueRef.current.length === 0) {
+        isSpeakingRef.current = false
+        setStatus(s => (s === 'speaking' ? 'connected' : s))
+      }
+    }
+  }, [])
+
+  // 외부에서 큐에 문장 추가 (streaming sentence boundary 만났을 때).
+  // ★ 핵심: fetch 를 enqueue 시점에 즉시 시작 → Promise 를 큐에 푸시.
+  //         문장 N+1 TTS 가 문장 N 재생 중에 병렬로 미리 만들어진다.
+  const enqueueTTS = useCallback((sentence) => {
+    const s = (sentence || '').trim()
+    if (!s) return
+    if (conversationModeRef.current === 'ttt') return  // 텍스트 전용 모드
+    const clean = sanitizeForTTS(normalizeTtsText(s))
+    if (!clean) return
+
+    const bufPromise = fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: clean }),
+    }).then(res => {
+      if (!res.ok) throw new Error('tts http ' + res.status)
+      return res.arrayBuffer()
+    })
+
+    ttsQueueRef.current.push(bufPromise)
+    processTTSQueue()
+  }, [processTTSQueue])
+
+  // 인터럽트 — 큐 비우고 진행 중인 음성 즉시 중단
+  const clearTTSQueue = useCallback(() => {
+    ttsAbortRef.current = true
+    ttsQueueRef.current = []
+    try { vrmAvatarRef.current?.stopSpeaking?.() } catch {}
+    isSpeakingRef.current = false
+    setStatus(s => (s === 'speaking' ? 'connected' : s))
+  }, [])
+
+  // ─── 메시지 전송 (Streaming SSE 버전) ──────────────────────
+  // /api/chat-stream 으로 토큰 단위 받음. 문장 boundary 만날 때마다 enqueueTTS().
+  // 화면은 토큰 누적될 때마다 갱신 (typewriter 효과).
+  const sendMessage = useCallback(async (userText) => {
+    const text = userText.trim()
+    if (!text || isProcessingRef.current) return
+    if (isSpeakingRef.current) {
+      console.warn('[echo guard] sendMessage suppressed during avatar speaking:', text.slice(0, 30))
+      return
+    }
+    isProcessingRef.current = true
+    setIsProcessing(true)
+
+    setMessages(prev => [...prev, { role: 'user', text }])
+    historyRef.current = [...historyRef.current, { role: 'user', content: text }]
+    userTurnCountRef.current += 1
+    if (sessionIdRef.current) saveChat(sessionIdRef.current, 'user', text)
+    setMessages(prev => [...prev, { role: 'assistant', text: '' }]) // 비어있는 assistant bubble
+
+    let accumulated = ''       // 전체 누적 텍스트 (화면 표시용)
+    let pending = ''           // 아직 TTS 큐에 안 넣은 부분
+    let contactObj = null
+    let isFirstFlush = true    // 첫 chunk 만 짧게 trigger (첫 audio latency 최소화)
+
+    // 문장 경계 처리.
+    // - 첫 chunk: 길이 6+ 의 짧은 phrase 도 OK, 콤마/한국식 쉼표도 boundary
+    // - 두 번째부터: 길이 12+ 의 마침표/물음표/느낌표만 (자연스러운 intonation)
+    const flushPendingIfSentence = () => {
+      const minLen = isFirstFlush ? 6 : 12
+
+      // 1) 강한 boundary — 마침표/물음표/느낌표/줄바꿈
+      let m = pending.match(/^([\s\S]*?[.!?…。\n])(.*)$/)
+      if (m && m[1].trim().length >= minLen) {
+        enqueueTTS(m[1])
+        pending = m[2]
+        isFirstFlush = false
+        return true
+      }
+
+      // 2) 약한 boundary — 콤마류 (첫 chunk 한정)
+      if (isFirstFlush) {
+        m = pending.match(/^([\s\S]*?[,，、])(.*)$/)
+        if (m && m[1].trim().length >= 6) {
+          enqueueTTS(m[1])
+          pending = m[2]
+          isFirstFlush = false
+          return true
+        }
+      }
+
+      return false
+    }
+
+    try {
+      // ★ Vision keyword gate — 카메라/배경 의도가 있을 때만 프레임 첨부
+      //   매 발화마다 vision LLM 호출하면 7초씩 느려지고, 의도 없을 때 LLM이
+      //   엉뚱하게 "보이는 것을 묘사"하는 폴백 행동이 자주 발생함.
+      const VISION_INTENT = /보여|보이|보세요|뒤에|뒷.{0,2}배경|배경에|여기.{0,2}어|주변|화면|카메라|캠|영상|모습|어떻게.{0,3}보|뭐가.{0,3}보/
+      const wantsVision = VISION_INTENT.test(text)
+      const frame = wantsVision ? captureCameraFrame() : null
+      const images = frame ? [frame] : []
+      console.log('[chat-stream] wantsVision=' + wantsVision + ' images=' + images.length)
+
+      const res = await fetch('/api/chat-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, history: historyRef.current.slice(-8), images })
+      })
+      if (!res.ok || !res.body) throw new Error('chat-stream http ' + res.status)
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+
+        // SSE 라인 단위 파싱
+        let nlIdx
+        while ((nlIdx = buf.indexOf('\n\n')) !== -1) {
+          const event = buf.slice(0, nlIdx).trim()
+          buf = buf.slice(nlIdx + 2)
+          if (!event.startsWith('data: ')) continue
+          const payload = event.slice(6).trim()
+          if (payload === '[DONE]') { buf = ''; break }
+
+          let obj
+          try { obj = JSON.parse(payload) } catch { continue }
+
+          if (obj.token) {
+            accumulated += obj.token
+            pending += obj.token
+            // 화면 갱신
+            setMessages(prev => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last && last.role === 'assistant') {
+                next[next.length - 1] = { ...last, text: accumulated }
+              }
+              return next
+            })
+            // 문장 경계 도달 시 TTS 큐에 넣음 (한 chunk 안에 여러 문장이면 반복)
+            while (flushPendingIfSentence()) {}
+          }
+          if (obj.contact) {
+            contactObj = obj.contact
+            setMessages(prev => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              if (last && last.role === 'assistant') {
+                next[next.length - 1] = { ...last, contact: contactObj }
+              }
+              return next
+            })
+          }
+          if (obj.error) {
+            console.warn('[chat-stream] server error:', obj.error)
+          }
+          if (obj.done) {
+            // 남은 pending 도 TTS 큐로
+            if (pending.trim()) {
+              enqueueTTS(pending)
+              pending = ''
+            }
+          }
+        }
+      }
+      // 스트림 끝났는데 done 마커 못 받았을 경우 — 남은 pending 처리
+      if (pending.trim()) {
+        enqueueTTS(pending)
+        pending = ''
+      }
+
+      const finalReply = accumulated || '죄송해요, 답변을 생성하지 못했어요.'
+      historyRef.current = [...historyRef.current, { role: 'assistant', content: finalReply }]
+      if (sessionIdRef.current) saveChat(sessionIdRef.current, 'assistant', finalReply)
+
+    } catch (e) {
+      console.warn('[chat-stream] error:', e)
+      setMessages(prev => {
+        const next = [...prev]
+        const last = next[next.length - 1]
+        if (last && last.role === 'assistant' && !last.text) {
+          next[next.length - 1] = { role: 'assistant', text: '오류가 발생했어요. 다시 시도해 주세요.' }
+        }
+        return next
+      })
+    } finally {
+      isProcessingRef.current = false
+      setIsProcessing(false)
+    }
+  }, [captureCameraFrame, enqueueTTS])
+
+  // ─── STT 텍스트 제출 (whisper 결과 → sendMessage) ────────────────────
+  const submitSpeechText = useCallback((rawText) => {
+    const text = normalizeTranscript(rawText)
+    if (!text || text.length < 2) return
+    // 봇 발화 중 / LLM 처리 중에 들어온 결과는 echo 가능성 → 무시
+    if (isSpeakingRef.current || isProcessingRef.current) {
+      console.warn('[echo guard] transcript dropped (speaking/processing):', text.slice(0, 30))
+      return
+    }
+    // 동일 발화 8초 내 중복 제출 방지 (whisper가 같은 구간 두 번 인식하는 경우)
+    const key = text.replace(/\s+/g, '')
+    const now = Date.now()
+    const last = lastSubmittedSpeechRef.current
+    if (key === last.key && now - last.at < 8000) return
+    lastSubmittedSpeechRef.current = { key, at: now }
+    sendMessage(text)
+  }, [sendMessage])
+
+  // ─── MicRecorder 생성 (lazy) ─────────────────────────
+  const ensureMicRecorder = useCallback(() => {
+    if (micRecorderRef.current) return micRecorderRef.current
+    if (!isMicRecorderSupported()) {
+      alert('이 브라우저는 음성 인식을 지원하지 않아요.\n텍스트 모드를 이용하시거나 최신 Chrome/Safari에서 시도해주세요.')
+      return null
+    }
+    const rec = new MicRecorder({
+      sttEndpoint: '/api/stt',
+      onTranscript: (text) => submitSpeechText(text),
+      onError: (err) => console.warn('[STT] MicRecorder error:', err),
+      onStateChange: (st) => {
+        const listening = st === 'listening' || st === 'recording'
+        isListeningRef.current = listening
+        setIsListening(listening)
+      },
+    })
+    micRecorderRef.current = rec
+    return rec
+  }, [submitSpeechText])
+
+  // ─── 마이크 시작 / 정지 ──────────────────────────────
+  const startListening = useCallback(async () => {
+    const rec = ensureMicRecorder()
+    if (!rec) {
+      autoListenRef.current = false
+      setAutoListen(false)
+      return
+    }
+    try {
+      if (!rec.isRunning) {
+        await rec.start()
+      } else {
+        rec.resume()
+      }
+    } catch (e) {
+      console.warn('[STT] start failed:', e)
+      const denied = e?.name === 'NotAllowedError' || /denied|permission|allowed/i.test(e?.message || '')
+      if (denied) {
+        alert('마이크 권한이 필요해요.\n브라우저 주소창 왼쪽의 자물쇠 아이콘을 클릭하여 마이크를 허용해주세요.')
+      } else {
+        alert('마이크를 시작하지 못했어요. 다른 앱이 마이크를 쓰고 있지 않은지 확인해주세요.')
+      }
+      autoListenRef.current = false
+      setAutoListen(false)
+    }
+  }, [ensureMicRecorder])
+
+  const stopListening = useCallback(() => {
+    const rec = micRecorderRef.current
+    if (rec) {
+      try { rec.stop() } catch {}
+      micRecorderRef.current = null
+    }
+    isListeningRef.current = false
+    setIsListening(false)
+  }, [])
+
+  // ─── 아바타 발화 인터럽트 ────────────────────────
+  // 봇 발화만 멈춤. 마이크(MicRecorder)는 그대로 유지 — status가 'connected'로
+  // 바뀌면 아래 echo guard useEffect가 알아서 resume 한다.
+  // streaming 도입 후엔 TTS 큐도 비우고 abort 플래그 세움.
+  const interruptAvatar = useCallback(() => {
+    try { clearTTSQueue() } catch (e) { console.error('interrupt error:', e) }
+  }, [clearTTSQueue])
+
+  // ─── echo guard: 봇 발화 중 마이크 pause / 발화 끝나면 resume ──────────
+  // status === 'speaking' → MicRecorder.pause() (스트림 유지, VAD/녹음만 중단)
+  // status === 'connected' → ECHO_RESUME_DELAY_MS 후 resume (autoListen 켜져있을 때만)
+  useEffect(() => {
+    const rec = micRecorderRef.current
+    clearTimeout(echoResumeTimerRef.current)
+    if (!rec || !rec.isRunning) return
+
+    if (status === 'speaking') {
+      rec.pause()
+    } else if (status === 'connected' && autoListenRef.current) {
+      echoResumeTimerRef.current = setTimeout(() => {
+        const r = micRecorderRef.current
+        if (r && r.isRunning && autoListenRef.current && !isSpeakingRef.current && !isProcessingRef.current) {
+          r.resume()
+        }
+      }, ECHO_RESUME_DELAY_MS)
+    }
+    return () => clearTimeout(echoResumeTimerRef.current)
+  }, [status])
+
+  // ─── LLM 처리 끝나면 마이크 resume (autoListen 켜져있을 때) ───────────
+  useEffect(() => {
+    const rec = micRecorderRef.current
+    if (!isProcessing && autoListen && rec && rec.isRunning && !isSpeakingRef.current) {
+      // 봇이 발화 중이 아니면 바로 resume. 발화 중이면 위 status useEffect가 처리.
+      rec.resume()
+    }
+  }, [isProcessing, autoListen])
+
+  // ─── 마이크 토글 (사용자 액션) ─────────────────────
+  const toggleMic = useCallback(() => {
+    if (conversationModeRef.current === 'ttt') return
+    if (!sessionRef.current) {
+      alert('먼저 아바타를 시작해주세요.')
+      return
+    }
+    if (autoListenRef.current || isListeningRef.current) {
+      autoListenRef.current = false
+      setAutoListen(false)
+      stopListening()
+    } else {
+      autoListenRef.current = true
+      setAutoListen(true)
+      startListening()
+    }
+  }, [startListening, stopListening])
+
+  // ─── ESC 키로 발화 인터럽트 (OAC SOFT-INTERRUPT 패턴 차용) ───
+  useEffect(() => {
+    const handleGlobalKeydown = (e) => {
+      if (e.key !== 'Escape' && e.code !== 'Escape') return
+      if (!sessionRef.current) return
+      e.preventDefault()
+      e.stopPropagation()
+      const target = e.target
+      if (target && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')) {
+        target.blur()
+      }
+      interruptAvatar()
+    }
+    window.addEventListener('keydown', handleGlobalKeydown, true)
+    document.addEventListener('keydown', handleGlobalKeydown, true)
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeydown, true)
+      document.removeEventListener('keydown', handleGlobalKeydown, true)
+    }
+  }, [interruptAvatar])
+
+  // ─── 아바타 종료 ───────────────────────────────────
+  const stopAvatar = useCallback(async () => {
+    // STT 중지
+    clearTimeout(echoResumeTimerRef.current)
+    lastSubmittedSpeechRef.current = { key: '', at: 0 }
+    autoListenRef.current = false
+    setAutoListen(false)
+    stopListening()
+    setIsListening(false)
+    stopUserCamera()
+    isSpeakingRef.current = false
+
+    // 진행 중인 TTS 발화 + 큐 모두 중단
+    try { clearTTSQueue() } catch {}
+
+    // 설문 트리거 — 사용자 턴 3회 이상일 때만 노출
+    const endedSessionId = sessionIdRef.current
+    const usedTurns = userTurnCountRef.current
+    const usedModes = Array.from(modesUsedRef.current)
+
+    // 상태 리셋
+    sessionRef.current     = null
+    sessionIdRef.current   = null
+    historyRef.current     = []
+    setStatus('idle')
+    setMessages([])           // 채팅 초기화 — 깔끔하게 다시 시작
+
+    // 종료 직후 헤더 "설문" 버튼이 방금 끝난 세션을 참조할 수 있도록 보존
+    if (endedSessionId) lastEndedSessionIdRef.current = endedSessionId
+    lastEndedModesRef.current = usedModes
+
+    if (usedTurns >= 3) {
+      setSurveySessionId(endedSessionId)
+      setSurveyModesUsed(usedModes)
+      setSurveyOpen(true)
+    }
+    userTurnCountRef.current = 0
+    modesUsedRef.current = new Set()
+  }, [stopListening, stopUserCamera, clearTTSQueue])
+
+  const startTextMode = useCallback(() => {
+    clearTimeout(echoResumeTimerRef.current)
+    lastSubmittedSpeechRef.current = { key: '', at: 0 }
+    autoListenRef.current = false
+    setAutoListen(false)
+    stopListening()
+    setIsListening(false)
+    stopUserCamera()
+    isSpeakingRef.current = false
+
+    sessionRef.current = null
+    sessionIdRef.current = newSessionId()
+    historyRef.current = []
+    setStatus('connected')
+
+    const greetingText = getGreetingText(user)
+    setMessages([{ role: 'assistant', text: greetingText }])
+    saveChat(sessionIdRef.current, 'assistant', greetingText)
+  }, [stopListening, stopUserCamera, user])
+
+  // ─── 아바타 시작 (VRM) ─────────────────────────────
+  // VRM 은 AvatarPanel 에 항상 마운트돼 앱 로드 시점부터 자체 로딩된다.
+  // 여기서는 카메라/세션/인사말만 처리하고, VRM 로드가 안 끝났으면 잠깐 기다린다.
+  const startAvatar = useCallback(async () => {
+    setStatus('connecting')
+    sessionIdRef.current = newSessionId()
+    lastSubmittedSpeechRef.current = { key: '', at: 0 }
+    if (conversationModeRef.current === 'ftf') {
+      await startUserCamera()
+    } else {
+      stopUserCamera()
+    }
+
+    // VRM 로드 대기 (보통 이미 로드 완료 — 최대 5초)
+    for (let i = 0; i < 50 && !vrmAvatarRef.current?.isReady?.(); i++) {
+      await new Promise(r => setTimeout(r, 100))
+    }
+
+    sessionRef.current = true   // 아바타 세션 활성
+    historyRef.current = []
+    setStatus('connected')
+
+    // 인사말 — 채팅 표시 + TTS 발화
+    const greetingText = getGreetingText(user)
+    const greetingTts = normalizeTtsText(getGreetingTts(user))
+    setMessages([{ role: 'assistant', text: greetingText }])
+    saveChat(sessionIdRef.current, 'assistant', greetingText)
+    enqueueTTS(greetingTts)    // TTS 큐로 인사말 전송 — 큐 프로세서가 status 관리
+
+    // 마이크 자동 시작 (사용자 클릭(시작 버튼) 컨텍스트 안이라 권한 prompt 가능)
+    // MicRecorder는 인사말 발화 중엔 echo guard로 pause → 발화 끝나면 자동 resume
+    autoListenRef.current = true
+    setAutoListen(true)
+    startListening()
+  }, [startListening, startUserCamera, stopUserCamera, user, enqueueTTS])
+
+  const startConversation = useCallback(() => {
+    if (conversationModeRef.current === 'ttt') {
+      startTextMode()
+      return
+    }
+    startAvatar()
+  }, [startAvatar, startTextMode])
+
+  const changeConversationMode = useCallback((nextMode) => {
+    if (nextMode === conversationModeRef.current) return
+
+    const hasAvatarSession = Boolean(sessionRef.current)
+    const isTextOnlySession = status !== 'idle' && !hasAvatarSession
+
+    if (isTextOnlySession && nextMode !== 'ttt') {
+      alert('텍스트 상담에서 음성/화상으로 바꾸려면 대화를 종료한 뒤 다시 시작해주세요.')
+      return
+    }
+
+    conversationModeRef.current = nextMode
+    setConversationMode(nextMode)
+
+    if (nextMode === 'ftf') {
+      if (hasAvatarSession) startUserCamera()
+    } else {
+      stopUserCamera()
+    }
+
+    if (nextMode === 'ttt') {
+      autoListenRef.current = false
+      setAutoListen(false)
+      stopListening()
+      return
+    }
+
+    if (hasAvatarSession) {
+      autoListenRef.current = true
+      setAutoListen(true)
+      startListening()
+    }
+  }, [startListening, startUserCamera, status, stopListening, stopUserCamera])
+
+  // 언마운트 시 마이크 정리
+  useEffect(() => () => {
+    clearTimeout(echoResumeTimerRef.current)
+    if (micRecorderRef.current) {
+      try { micRecorderRef.current.stop() } catch {}
+      micRecorderRef.current = null
+    }
+  }, [])
+
+  const isChatConnected = status !== 'idle' && status !== 'connecting'
+
+  return (
+    <div className={styles.app}>
+      <AvatarPanel
+        status={status}
+        mode={conversationMode}
+        onModeChange={changeConversationMode}
+        vrmAvatarRef={vrmAvatarRef}
+        onAvatarReady={handleAvatarReady}
+        userVideoRef={userVideoRef}
+        videoReady={videoReady}
+        cameraActive={Boolean(cameraStream)}
+        onStart={startConversation}
+        onStop={stopAvatar}
+        onInterrupt={interruptAvatar}
+        isListening={isListening}
+      />
+      <ChatPanel
+        messages={messages}
+        isProcessing={isProcessing}
+        onSend={sendMessage}
+        connected={isChatConnected}
+        isListening={isListening}
+        onToggleMic={toggleMic}
+        micEnabled={conversationMode !== 'ttt' && isChatConnected}
+        micAvailable={conversationMode !== 'ttt'}
+        mode={conversationMode}
+        user={user}
+        onLoginClick={() => setAuthOpen(true)}
+        onLogout={handleLogout}
+        onOpenSurvey={() => {
+          const liveSid = sessionIdRef.current
+          const sid = liveSid || lastEndedSessionIdRef.current || null
+          const liveModes = Array.from(modesUsedRef.current)
+          const modes = liveModes.length ? liveModes : lastEndedModesRef.current
+          setSurveySessionId(sid)
+          setSurveyModesUsed(modes)
+          setSurveyOpen(true)
+        }}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+      <AuthModal
+        open={authOpen}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={(u) => setUser(u)}
+      />
+      <SurveyModal
+        open={surveyOpen}
+        onClose={() => setSurveyOpen(false)}
+        sessionId={surveySessionId}
+        modesUsed={surveyModesUsed}
+        visitCount={user?.visit_count ?? 1}
+      />
+    </div>
+  )
+}

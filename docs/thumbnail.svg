@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="'Malgun Gothic','Noto Sans KR','Apple SD Gothic Neo',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a365d"/>
+      <stop offset="1" stop-color="#2d5a87"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#e6c08a"/>
+      <stop offset="1" stop-color="#d4a574"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#d4a574" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#d4a574" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- 배경 -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="950" cy="300" r="320" fill="url(#glow)"/>
+  <!-- 점 패턴(살짝) -->
+  <g fill="#ffffff" opacity="0.05">
+    <circle cx="120" cy="80" r="3"/><circle cx="180" cy="80" r="3"/><circle cx="240" cy="80" r="3"/>
+    <circle cx="120" cy="140" r="3"/><circle cx="180" cy="140" r="3"/>
+  </g>
+
+  <!-- 상단 뱃지 -->
+  <g transform="translate(80,72)">
+    <rect width="300" height="40" rx="20" fill="#d4a574" fill-opacity="0.18" stroke="#d4a574" stroke-opacity="0.6"/>
+    <text x="150" y="26" text-anchor="middle" fill="#e6c08a" font-size="19" font-weight="600">코드 수정 없이 · 학생 비용 0원</text>
+  </g>
+
+  <!-- 제목 -->
+  <text x="80" y="250" fill="#ffffff" font-size="78" font-weight="800">나만의 AI 아바타 봇</text>
+  <text x="80" y="345" fill="#ffffff" font-size="78" font-weight="800">만들기 <tspan fill="#e6c08a">자습서</tspan></text>
+
+  <!-- 부제 -->
+  <text x="84" y="410" fill="#cdd9e8" font-size="30" font-weight="500">VRoid VRM 아바타 · 음성(STT/TTS) · 나만의 지식(RAG)</text>
+
+  <!-- 기능 칩 3개 -->
+  <g font-size="22" font-weight="600">
+    <g transform="translate(84,455)">
+      <rect width="150" height="52" rx="26" fill="#ffffff" fill-opacity="0.10"/>
+      <circle cx="34" cy="26" r="9" fill="#8b5cf6"/>
+      <text x="58" y="34" fill="#ffffff">페르소나</text>
+    </g>
+    <g transform="translate(252,455)">
+      <rect width="120" height="52" rx="26" fill="#ffffff" fill-opacity="0.10"/>
+      <circle cx="34" cy="26" r="9" fill="#06b6d4"/>
+      <text x="58" y="34" fill="#ffffff">지식</text>
+    </g>
+    <g transform="translate(390,455)">
+      <rect width="120" height="52" rx="26" fill="#ffffff" fill-opacity="0.10"/>
+      <circle cx="34" cy="26" r="9" fill="#d946ef"/>
+      <text x="58" y="34" fill="#ffffff">음성</text>
+    </g>
+  </g>
+
+  <!-- 하단 URL -->
+  <text x="80" y="565" fill="#8ea6c4" font-size="22" font-weight="500">github.com/sdkparkforbi/my-vrm-bot</text>
+
+  <!-- 오른쪽: 심플 아바타 일러스트 -->
+  <g transform="translate(880,150)">
+    <!-- 후광 원 -->
+    <circle cx="160" cy="170" r="175" fill="#ffffff" fill-opacity="0.06"/>
+    <circle cx="160" cy="170" r="175" fill="none" stroke="#d4a574" stroke-opacity="0.5" stroke-width="2" stroke-dasharray="6 8"/>
+    <!-- 몸통 -->
+    <path d="M70 330 q90 -70 180 0 v40 h-180 z" fill="#3b6ea5"/>
+    <!-- 목 -->
+    <rect x="138" y="250" width="44" height="40" rx="14" fill="#f0c9a8"/>
+    <!-- 머리 -->
+    <circle cx="160" cy="190" r="92" fill="#f6d3b0"/>
+    <!-- 머리카락 -->
+    <path d="M68 180 q0 -100 92 -100 q92 0 92 100 q-30 -52 -92 -52 q-62 0 -92 52 z" fill="#5b3b2e"/>
+    <path d="M68 182 q8 40 14 58 q-22 -34 -14 -58 z" fill="#5b3b2e"/>
+    <path d="M252 182 q-8 40 -14 58 q22 -34 14 -58 z" fill="#5b3b2e"/>
+    <!-- 눈 -->
+    <circle cx="128" cy="195" r="9" fill="#3a2a24"/>
+    <circle cx="192" cy="195" r="9" fill="#3a2a24"/>
+    <!-- 미소 -->
+    <path d="M138 222 q22 20 44 0" fill="none" stroke="#b5705a" stroke-width="5" stroke-linecap="round"/>
+    <!-- 볼터치 -->
+    <circle cx="116" cy="214" r="10" fill="#f3a08a" opacity="0.5"/>
+    <circle cx="204" cy="214" r="10" fill="#f3a08a" opacity="0.5"/>
+  </g>
+</svg>

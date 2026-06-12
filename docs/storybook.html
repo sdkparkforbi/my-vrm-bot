@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>나만의 AI 아바타 봇 — 그림책 자습서</title>
+<meta name="description" content="코드 한 줄 안 건드리고 나만의 AI 아바타 봇 만들기. 그림과 비유로 차근차근 따라 하는 그림책 자습서.">
+<meta property="og:type" content="article">
+<meta property="og:title" content="나만의 AI 아바타 봇 — 그림책 자습서">
+<meta property="og:description" content="코드 한 줄 안 건드리고 나만의 AI 아바타 봇 만들기 (그림책)">
+<meta property="og:image" content="https://sdkparkforbi.github.io/my-vrm-bot/thumbnail.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ko_KR">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://sdkparkforbi.github.io/my-vrm-bot/thumbnail.png">
+<style>
+  :root{
+    --bg:#fef9f3; --ink:#2b2440; --soft:#6b6486; --line:#efe6da;
+    --blue:#4f7cff; --blue-d:#3a5fd9;
+    --pink:#ff6b9d; --green:#22c08b; --amber:#ffb02e; --purple:#9b6bff; --cyan:#22b8cf;
+    --card:#ffffff; --shadow:0 10px 30px rgba(60,40,90,.10);
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:'Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',system-ui,sans-serif;
+    line-height:1.8; -webkit-font-smoothing:antialiased;
+  }
+  header.hero{
+    text-align:center; padding:56px 20px 30px;
+    background:radial-gradient(120% 120% at 50% 0%, #fff 0%, var(--bg) 60%);
+  }
+  header.hero .cover{font-size:64px; letter-spacing:8px;}
+  header.hero h1{font-size:clamp(26px,5vw,40px); margin:10px 0 6px; letter-spacing:-.5px;}
+  header.hero p.sub{color:var(--soft); margin:0 0 6px; font-size:16px;}
+  header.hero .pill{
+    display:inline-block; background:#fff; border:1px solid var(--line);
+    border-radius:999px; padding:6px 14px; font-size:13.5px; color:var(--soft); margin-top:8px;
+  }
+  nav.toc{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:18px auto 0; max-width:780px;}
+  nav.toc a{
+    text-decoration:none; font-size:13.5px; color:var(--soft);
+    background:#fff; border:1px solid var(--line); padding:6px 12px; border-radius:999px;
+  }
+  nav.toc a:hover{color:var(--blue-d); border-color:#d7e2ff;}
+
+  .wrap{max-width:760px; margin:0 auto; padding:10px 18px 60px;}
+
+  section.scene{
+    background:var(--card); border:1px solid var(--line); border-radius:22px;
+    padding:26px 26px 22px; margin:22px 0; box-shadow:var(--shadow);
+  }
+  .scene-head{display:flex; align-items:center; gap:14px; margin-bottom:4px;}
+  .num{
+    flex:0 0 auto; width:46px; height:46px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; font-weight:800; color:#fff;
+  }
+  .c-pink{background:var(--pink);} .c-blue{background:var(--blue);}
+  .c-green{background:var(--green);} .c-amber{background:var(--amber);}
+  .c-purple{background:var(--purple);} .c-cyan{background:var(--cyan);}
+  .scene h2{font-size:clamp(19px,3.4vw,25px); margin:0; letter-spacing:-.3px;}
+  .scene h2 small{display:block; font-size:13.5px; font-weight:600; color:var(--soft); margin-top:2px;}
+  .scene p{margin:.6em 0;}
+  .lead{font-size:16.5px;}
+
+  .illus{font-size:46px; text-align:center; margin:14px 0 8px; letter-spacing:8px; line-height:1.3;}
+
+  .analogy{
+    background:#fff7ef; border:1px dashed #f0c89a; border-radius:14px;
+    padding:14px 16px; margin:12px 0; font-size:15px;
+  }
+  .tip{background:#eafaf3; border-left:4px solid var(--green); border-radius:10px; padding:12px 14px; margin:12px 0; font-size:15px;}
+  .warn{background:#fff7e6; border-left:4px solid var(--amber); border-radius:10px; padding:12px 14px; margin:12px 0; font-size:15px;}
+  .danger{background:#ffeef0; border-left:4px solid var(--pink); border-radius:10px; padding:12px 14px; margin:12px 0; font-size:15px;}
+
+  .flow{margin:10px 0;}
+  .step{
+    display:flex; align-items:flex-start; gap:14px;
+    background:#fbfaff; border:1px solid var(--line); border-radius:14px; padding:12px 14px;
+  }
+  .step .ico{font-size:26px; flex:0 0 auto; width:42px; text-align:center;}
+  .step .t{font-weight:800;}
+  .step .d{color:var(--soft); font-size:14px;}
+  .arrow{text-align:center; color:#c9bfe0; font-size:18px; margin:4px 0;}
+
+  ol.do{counter-reset:s; list-style:none; padding-left:0; margin:10px 0;}
+  ol.do>li{counter-increment:s; position:relative; padding:6px 0 6px 38px; margin:2px 0;}
+  ol.do>li::before{
+    content:counter(s); position:absolute; left:0; top:6px;
+    width:26px; height:26px; border-radius:50%; background:#eef1ff; color:var(--blue-d);
+    font-weight:800; font-size:14px; display:flex; align-items:center; justify-content:center;
+  }
+  code{background:#f3eee6; color:#3a5fd9; padding:2px 7px; border-radius:6px; font-family:'Cascadia Code',Consolas,monospace; font-size:.9em;}
+  pre{background:#2b2440; color:#f3eefc; padding:14px 16px; border-radius:12px; overflow-x:auto; font-size:13.5px; line-height:1.6;}
+  pre code{background:none; color:inherit; padding:0;}
+  .kbd{display:inline-block; background:#fff; border:1px solid var(--line); border-bottom-width:2px; border-radius:6px; padding:1px 7px; font-size:13px;}
+
+  .btn-row{display:flex; flex-wrap:wrap; gap:10px; margin-top:6px;}
+  a.btn{
+    text-decoration:none; background:var(--blue); color:#fff; border-radius:999px;
+    padding:9px 18px; font-weight:700; font-size:14.5px; display:inline-flex; align-items:center; gap:6px;
+  }
+  a.btn.ghost{background:#fff; color:var(--blue-d); border:1px solid #d7e2ff;}
+  a.btn:hover{filter:brightness(1.05);}
+
+  footer{text-align:center; color:var(--soft); font-size:14px; padding:30px 20px 50px;}
+  footer a{color:var(--blue-d); text-decoration:none;}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="cover">🧑‍🎨 ➜ 🤖 ➜ 💬</div>
+  <h1>나만의 AI 아바타 봇 만들기</h1>
+  <p class="sub">그림과 비유로 차근차근 — 코드 한 줄 안 건드려요</p>
+  <span class="pill">VRM 아바타 · 음성 · 나만의 지식(RAG) · 비용 0원</span>
+  <nav class="toc">
+    <a href="#what">① 이게 뭐예요?</a>
+    <a href="#flow">② 전체 흐름</a>
+    <a href="#prep">③ 준비물</a>
+    <a href="#clone">④ 내 봇 복제</a>
+    <a href="#deploy">⑤ 인터넷에 올리기</a>
+    <a href="#kakao">⑥ 카카오 연결</a>
+    <a href="#avatar">⑦ 아바타 입히기</a>
+    <a href="#brain">⑧ 지식·성격 넣기</a>
+    <a href="#done">⑨ 완성·공유</a>
+  </nav>
+</header>
+
+<div class="wrap">
+
+  <!-- ① 이게 뭐예요 -->
+  <section class="scene" id="what">
+    <div class="scene-head">
+      <div class="num c-pink">?</div>
+      <h2>이게 뭐예요?<small>한 문장으로 이해하기</small></h2>
+    </div>
+    <div class="illus">🧍 ➜ 🎭 ➜ 🧠 ➜ 💬</div>
+    <p class="lead"><b>내가 만든 3D 캐릭터(아바타)</b>가 화면에서 말을 하고, <b>내가 가르친 지식</b>으로 질문에 답해 주는 <b>나만의 AI 친구</b>예요.</p>
+    <div class="analogy">
+      🧑‍🏫 <b>비유하자면…</b> 빈 인형에게 <b>얼굴(아바타)</b>·<b>성격(말투)</b>·<b>지식(공부한 내용)</b>을 하나씩 넣어 주는 거예요.
+      다 넣으면 인형이 살아나 사람들과 대화합니다.
+    </div>
+    <div class="tip">💚 <b>코드는 안 만져요.</b> 인터넷 사이트(GitHub·Vercel)에서 버튼을 누르고, 글자만 입력하면 됩니다.</div>
+  </section>
+
+  <!-- ② 전체 흐름 -->
+  <section class="scene" id="flow">
+    <div class="scene-head">
+      <div class="num c-blue">∞</div>
+      <h2>전체 흐름 한눈에 보기<small>위에서 아래로 6걸음</small></h2>
+    </div>
+    <div class="flow">
+      <div class="step"><div class="ico">🧰</div><div><div class="t">1. 준비</div><div class="d">Git 설치 + GitHub·Vercel·카카오 가입</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">📦</div><div><div class="t">2. 내 봇 복제</div><div class="d">템플릿을 내 GitHub 저장소로 복사</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">🚀</div><div><div class="t">3. 인터넷에 올리기</div><div class="d">Vercel 배포 → 내 봇 주소 생성 (닉네임 설정)</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">💛</div><div><div class="t">4. 카카오 연결</div><div class="d">로그인 + 친구에게 공유</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">🎨</div><div><div class="t">5. 아바타 입히기</div><div class="d">VRoid로 내 캐릭터 만들어 올리기</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">🧠</div><div><div class="t">6. 지식·성격 넣기 ⭐</div><div class="d">/rag 페이지에서 페르소나 + 지식 등록</div></div></div>
+    </div>
+    <div class="tip">🌱 지금 다 외울 필요 없어요. <b>한 걸음씩</b> 따라오면 됩니다. 소요 시간 약 1시간 (아바타 제외).</div>
+  </section>
+
+  <!-- ③ 준비물 -->
+  <section class="scene" id="prep">
+    <div class="scene-head">
+      <div class="num c-amber">✓</div>
+      <h2>준비물 챙기기<small>계정 3개 + 프로그램 1개</small></h2>
+    </div>
+    <div class="illus">🧰 🐙 ▲ 💛</div>
+    <ol class="do">
+      <li><b>Git</b> 설치 — 코드를 옮기는 택배 기사 (<a href="https://git-scm.com/downloads" target="_blank">다운로드</a>)</li>
+      <li><b>GitHub</b> 가입 — 내 코드를 보관하는 창고 (<a href="https://github.com/" target="_blank">github.com</a>)</li>
+      <li><b>Vercel</b> 가입 — 내 봇을 인터넷에 띄워 주는 무대 (<a href="https://vercel.com/" target="_blank">vercel.com</a>)</li>
+      <li><b>카카오 디벨로퍼스</b> 가입 — 로그인·공유 연결 (<a href="https://developers.kakao.com/" target="_blank">developers.kakao.com</a>)</li>
+    </ol>
+    <div class="analogy">🧑‍🏫 <b>비유하자면…</b> GitHub은 <b>창고</b>, Vercel은 <b>무대</b>, Git은 창고와 무대 사이를 오가는 <b>택배 기사</b>예요.</div>
+  </section>
+
+  <!-- ④ 내 봇 복제 -->
+  <section class="scene" id="clone">
+    <div class="scene-head">
+      <div class="num c-green">📦</div>
+      <h2>내 봇 복제하기<small>템플릿 → 내 저장소</small></h2>
+    </div>
+    <div class="illus">🧩 ➜ 📥 ➜ 📤</div>
+    <p>준비된 봇 템플릿을 <b>그대로 복사</b>해서 내 GitHub 창고에 올립니다.</p>
+    <ol class="do">
+      <li>GitHub에서 <b>빈 저장소</b> 만들기 (이름: <code>my-bot</code>, Public, 체크박스 모두 OFF)</li>
+      <li>내 컴퓨터에서 아래를 차례로 (까만 창에 한 줄씩):</li>
+    </ol>
+    <pre><code>git clone https://github.com/sdkparkforbi/my-vrm-bot.git .
+rmdir /s /q .git
+git init -b main
+git add . &amp;&amp; git commit -m "내 봇 시작"
+git remote add origin https://github.com/[내아이디]/my-bot.git
+git push -u origin main</code></pre>
+    <div class="warn">⚠️ 마지막 <code>git remote add</code> 의 주소는 <b>1번에서 만든 내 저장소</b> 주소예요 (템플릿 주소 아님).</div>
+  </section>
+
+  <!-- ⑤ 인터넷에 올리기 -->
+  <section class="scene" id="deploy">
+    <div class="scene-head">
+      <div class="num c-blue">🚀</div>
+      <h2>인터넷에 올리기<small>Vercel 배포 + 내 닉네임</small></h2>
+    </div>
+    <div class="illus">📦 ➜ ▲ ➜ 🌐</div>
+    <p><a href="https://vercel.com" target="_blank">Vercel</a> → <b>New Project</b> → 내 저장소 선택 → <b>환경 변수</b> 입력 후 <b>Deploy</b>.</p>
+    <ol class="do">
+      <li><b>닉네임(BOT_ID)</b> 정하기 — 영문 소문자·숫자·하이픈, 예: <code>bungae</code></li>
+      <li>환경 변수에 같은 값 2개: <code>BOT_ID</code> 와 <code>VITE_BOT_ID</code></li>
+      <li>카카오 키 <code>VITE_KAKAO_JS_KEY</code> (Step 6에서 발급, 지금은 임시값 OK)</li>
+      <li><b>Deploy</b> → 1~3분 후 <code>https://my-bot.vercel.app</code> 같은 내 봇 주소 완성! 🎉</li>
+    </ol>
+    <div class="analogy">🧑‍🏫 <b>닉네임이 곧 내 봇의 이름표</b>예요. 이 이름으로 봇이 <b>내 지식·성격</b>을 찾아옵니다. 친구 봇과 절대 안 섞여요.</div>
+  </section>
+
+  <!-- ⑥ 카카오 연결 -->
+  <section class="scene" id="kakao">
+    <div class="scene-head">
+      <div class="num c-amber">💛</div>
+      <h2>카카오 연결<small>로그인 + 친구에게 공유</small></h2>
+    </div>
+    <div class="illus">💛 ➜ 🔑 ➜ 📲</div>
+    <ol class="do">
+      <li><a href="https://developers.kakao.com/" target="_blank">Kakao Developers</a> → 앱 만들기 → <b>JavaScript 키</b> 복사</li>
+      <li><b>플랫폼 → Web</b> 에 내 Vercel 주소 등록</li>
+      <li><b>카카오 로그인 ON</b> + Redirect URI 설정</li>
+      <li>Vercel 환경변수 <code>VITE_KAKAO_JS_KEY</code> 를 진짜 키로 교체 → <b>Redeploy</b></li>
+    </ol>
+    <div class="tip">💚 키는 코드에 적지 않고 <b>환경변수</b>로 넣어요. 그래서 안전합니다.</div>
+  </section>
+
+  <!-- ⑦ 아바타 입히기 -->
+  <section class="scene" id="avatar">
+    <div class="scene-head">
+      <div class="num c-purple">🎨</div>
+      <h2>아바타 입히기<small>내 캐릭터 얼굴 만들기</small></h2>
+    </div>
+    <div class="illus">🧍 ➜ 🎨 ➜ 🧑‍🚀</div>
+    <p>봇의 <b>얼굴</b>이 되는 3D 캐릭터예요. 두 가지 길이 있어요.</p>
+    <div class="flow">
+      <div class="step"><div class="ico">⚡</div><div><div class="t">빠른 길</div><div class="d"><a href="https://hub.vroid.com/" target="_blank">VRoid Hub</a>에서 "재배포 허용" 캐릭터 다운로드</div></div></div>
+      <div class="step"><div class="ico">🛠️</div><div><div class="t">정성 길</div><div class="d"><a href="https://vroid.com/en/studio" target="_blank">VRoid Studio</a>로 직접 제작</div></div></div>
+    </div>
+    <p>받은 <code>.vrm</code> 파일을 <code>public/avatar.vrm</code> 로 저장하고 <b>push</b> 하면 끝!</p>
+    <div class="tip">💚 안 만들어도 돼요 — <b>기본 아바타가 이미 들어 있어요.</b> 나중에 바꾸면 됩니다.</div>
+  </section>
+
+  <!-- ⑧ 지식·성격 넣기 -->
+  <section class="scene" id="brain">
+    <div class="scene-head">
+      <div class="num c-cyan">🧠</div>
+      <h2>지식·성격 넣기 ⭐<small>이게 봇을 똑똑하게 만드는 핵심</small></h2>
+    </div>
+    <div class="illus">📚 ➜ 🤖 ➜ 💡</div>
+    <p>내 봇 사이트의 <b><code>/rag</code> 페이지</b>(또는 화면 오른쪽 위 🧠 아이콘)에서 직접 관리해요. <b>로그인</b> 후 내 닉네임으로 저장됩니다.</p>
+    <div class="flow">
+      <div class="step"><div class="ico">🎭</div><div><div class="t">페르소나 (성격·말투)</div><div class="d">"너는 친근한 반말로 설명하는 ○○ 봇이야" 처럼 자유 서술 → 저장</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">✨</div><div><div class="t">지식 (자동 청크)</div><div class="d">텍스트(노트·기사·위키)를 붙여넣고 "청크 생성" → AI가 Q&amp;A로 정리 → 저장</div></div></div>
+      <div class="arrow">▼</div>
+      <div class="step"><div class="ico">📚</div><div><div class="t">목록 확인</div><div class="d">등록된 지식이 쌓이는 걸 보고, 필요 없으면 삭제</div></div></div>
+    </div>
+    <div class="analogy">🧑‍🏫 <b>비유하자면…</b> 페르소나는 봇의 <b>성격</b>, 지식은 봇이 <b>공부한 교과서</b>예요. 둘 다 넣어야 똑똑하고 나다운 봇이 됩니다.</div>
+    <div class="tip">💚 텍스트는 한 번에 <b>500~5,000자</b>가 적당해요. 붙여넣고 30초~1분 기다리면 자동으로 정리됩니다.</div>
+  </section>
+
+  <!-- ⑨ 완성·공유 -->
+  <section class="scene" id="done">
+    <div class="scene-head">
+      <div class="num c-green">🎉</div>
+      <h2>완성! 공유하기<small>친구에게 내 봇 자랑하기</small></h2>
+    </div>
+    <div class="illus">✅ ➜ 📱 ➜ 🥳</div>
+    <ol class="do">
+      <li>내 봇 주소를 <b>카카오톡·QR코드</b>로 친구에게 공유</li>
+      <li>친구 피드백 받기 → <code>/rag</code> 에서 지식·성격 다듬기</li>
+      <li>반복할수록 봇이 점점 똑똑하고 나다워져요 💛</li>
+    </ol>
+    <div class="btn-row">
+      <a class="btn" href="tutorial.html">📖 정확한 명령어가 필요하면 — 상세 단계별 자습서</a>
+      <a class="btn ghost" href="https://github.com/sdkparkforbi/my-vrm-bot" target="_blank">💾 GitHub 저장소</a>
+    </div>
+  </section>
+
+</div>
+
+<footer>
+  <p>나만의 AI 아바타 봇 · 그림책 자습서</p>
+  <p><a href="https://github.com/sdkparkforbi/my-vrm-bot">github.com/sdkparkforbi/my-vrm-bot</a></p>
+</footer>
+
+</body>
+</html>

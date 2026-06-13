@@ -39,6 +39,17 @@
 .flabel { display: block; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
 .titleInput { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; font-size: 16px; }
 
+.dim { color: #9aa0ad; font-weight: 400; font-size: 12px; }
+
+.jsonBox { margin: 4px 0 18px; }
+.jsonToggle { background: none; border: none; color: #0e7490; font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 0; }
+.jsonToggle:hover { color: #06b6d4; }
+.jsonInner { margin-top: 8px; padding: 12px; border: 1px solid #e6e8ef; border-radius: 10px; background: #f8fafc; }
+.jsonHint { font-size: 12.5px; color: #6b7280; margin: 0 0 8px; line-height: 1.5; }
+.jsonHint code { background: #eef2ff; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.jsonArea { width: 100%; box-sizing: border-box; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 12px; font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; font-size: 12.5px; margin-bottom: 8px; }
+.jsonErr { color: #b91c1c; font-size: 13px; margin-bottom: 8px; }
+
 .qhead { font-weight: 700; font-size: 15px; margin: 8px 0 10px; color: #374151; }
 
 .qcard { border: 1px solid #eef0f4; border-radius: 10px; padding: 12px; margin-bottom: 10px; background: #fafbfc; }

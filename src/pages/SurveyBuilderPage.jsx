@@ -12,6 +12,16 @@ const TYPES = [
   { v: 'text', label: '주관식' },
 ]
 
+const JSON_EXAMPLE = `{
+  "title": "우리 봇 사용 후기",
+  "questions": [
+    { "label": "봇이 도움이 되었나요?", "type": "yesno" },
+    { "label": "가장 좋았던 점은?", "type": "choice", "options": ["정확도", "말투", "속도"] },
+    { "label": "전체 만족도", "type": "scale" },
+    { "label": "개선했으면 하는 점", "type": "text" }
+  ]
+}`
+
 let _kid = 0
 const newQ = () => ({ key: 'q' + (++_kid) + '_' + Math.random().toString(36).slice(2, 6), label: '', type: 'yesno', options: [] })
 
@@ -24,6 +34,9 @@ export default function SurveyBuilderPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
+  const [jsonOpen, setJsonOpen] = useState(false)
+  const [jsonText, setJsonText] = useState('')
+  const [jsonErr, setJsonErr] = useState('')
 
   useEffect(() => { verifyToken().then((u) => u && setUser(u)) }, [])
 
@@ -50,6 +63,34 @@ export default function SurveyBuilderPage() {
     return copy
   })
   const add = () => setQuestions((qs) => [...qs, newQ()])
+
+  // LLM 등으로 만든 JSON을 붙여넣어 한 번에 불러오기.
+  // 형식: {title?, questions:[{label, type, options?}]} 또는 [{...}] 배열.
+  const importJson = () => {
+    setJsonErr('')
+    let parsed
+    try { parsed = JSON.parse(jsonText) } catch { setJsonErr('JSON 형식 오류 — 따옴표·쉼표를 확인하세요.'); return }
+    const arr = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : null)
+    if (!arr) { setJsonErr('questions 배열을 찾을 수 없어요.'); return }
+    if (!Array.isArray(parsed) && typeof parsed.title === 'string') setTitle(parsed.title)
+    const loaded = arr.map((q, i) => {
+      const type = ['yesno', 'choice', 'scale', 'text'].includes(q?.type) ? q.type : 'text'
+      const options = Array.isArray(q?.options)
+        ? q.options.map(String)
+        : (typeof q?.options === 'string' ? q.options.split(',').map((s) => s.trim()).filter(Boolean) : [])
+      return {
+        key: (q?.key && String(q.key).replace(/[^a-zA-Z0-9_]/g, '')) || ('q' + (i + 1) + '_' + Math.random().toString(36).slice(2, 6)),
+        label: String(q?.label || q?.question || '').slice(0, 500),
+        type,
+        options,
+      }
+    }).filter((q) => q.label)
+    if (!loaded.length) { setJsonErr('불러올 질문이 없어요 (label 확인).'); return }
+    setQuestions(loaded)
+    setJsonOpen(false); setJsonText('')
+    setMsg(`JSON에서 질문 ${loaded.length}개 불러옴 — 검토 후 "설문 저장"을 누르세요`)
+    setTimeout(() => setMsg(''), 5000)
+  }
 
   const save = async () => {
     setSaving(true); setMsg('')
@@ -102,6 +143,24 @@ export default function SurveyBuilderPage() {
             <label className={styles.flabel}>설문 제목</label>
             <input className={styles.titleInput} value={title} placeholder="예: 우리 봇 사용 후기"
               onChange={(e) => setTitle(e.target.value)} />
+          </div>
+
+          <div className={styles.jsonBox}>
+            <button className={styles.jsonToggle} onClick={() => setJsonOpen((o) => !o)}>
+              {jsonOpen ? '▾' : '▸'} 📥 JSON으로 가져오기 <span className={styles.dim}>(LLM으로 만든 설문 붙여넣기)</span>
+            </button>
+            {jsonOpen && (
+              <div className={styles.jsonInner}>
+                <p className={styles.jsonHint}>
+                  ChatGPT/Claude 등에 "아래 형식의 설문 JSON으로 만들어줘"라고 요청해 받은 결과를 붙여넣고 <b>불러오기</b>를 누르세요.
+                  타입: <code>yesno · choice · scale · text</code>
+                </p>
+                <textarea className={styles.jsonArea} rows={9} value={jsonText}
+                  placeholder={JSON_EXAMPLE} onChange={(e) => setJsonText(e.target.value)} />
+                {jsonErr && <div className={styles.jsonErr}>⚠️ {jsonErr}</div>}
+                <button className={styles.btn} onClick={importJson} disabled={!jsonText.trim()}>불러오기</button>
+              </div>
+            )}
           </div>
 
           <div className={styles.qhead}>질문 ({questions.length})</div>

@@ -16,7 +16,12 @@ const ALLOWED_ACTIONS = new Set([
   'rag_generate',  // text (+auth) → AI 자동 청크 미리보기
   'persona_get',   // owner_id → persona
   'persona_set',   // owner_id, persona (+auth)
-  'nickname_check' // owner_id → 사용 가능 여부
+  'nickname_check', // owner_id → 사용 가능 여부
+  // ─── 봇별 맞춤 설문 ───
+  'survey_def_get',     // owner_id → {title, questions[]} (공개)
+  'survey_def_set',     // owner_id, title, questions[] (+auth)
+  'survey_submit',      // owner_id, answers{}, session_id → survey_<owner>
+  'survey_summary_bot'  // owner_id → 봇별 집계 (공개, 대시보드용)
 ])
 
 const FORWARD_HEADERS = ['x-dashboard-token', 'authorization']

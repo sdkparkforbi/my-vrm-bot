@@ -1,0 +1,53 @@
+.wrap {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 16px 20px 60px;
+  color: #1f2330;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.wrap::-webkit-scrollbar { width: 12px; }
+.wrap::-webkit-scrollbar-track { background: #f1f2f6; }
+.wrap::-webkit-scrollbar-thumb { background: #c4c9d4; border-radius: 6px; border: 2px solid #f1f2f6; }
+
+.head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 0 18px; border-bottom: 1px solid #e6e8ef; margin-bottom: 20px;
+}
+.thumb {
+  width: 56px; height: 56px; flex: none; border-radius: 14px;
+  background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+  display: flex; align-items: center; justify-content: center; font-size: 28px;
+}
+.headText { flex: 1; }
+.h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { font-size: 14px; color: #6b7280; }
+.sub b { color: #0e7490; }
+.home { color: #6b7280; text-decoration: none; font-size: 14px; white-space: nowrap; }
+.home:hover { color: #2563eb; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  gap: 16px;
+}
+.qcard { border: 1px solid #e6e8ef; border-radius: 14px; padding: 18px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.qtitle { font-size: 16px; margin: 0 0 4px; }
+.qmeta { font-size: 12px; color: #9aa0ad; margin-bottom: 14px; }
+
+.bars { display: flex; flex-direction: column; gap: 10px; }
+.barRow { display: grid; grid-template-columns: 90px 1fr 70px; align-items: center; gap: 8px; }
+.barLabel { font-size: 13px; color: #374151; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barTrack { background: #f1f2f6; border-radius: 6px; height: 22px; overflow: hidden; }
+.barFill { height: 100%; border-radius: 6px; transition: width 0.4s ease; min-width: 2px; }
+.barVal { font-size: 13px; color: #1f2330; text-align: right; font-weight: 600; }
+.pct { color: #9aa0ad; font-weight: 400; font-size: 12px; }
+
+.textList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+.textList li { background: #fafbfc; border: 1px solid #f0f1f5; border-radius: 8px; padding: 8px 10px; font-size: 13px; color: #374151; }
+.dimText { color: #9aa0ad; font-size: 13px; }
+
+.empty { color: #9aa0ad; font-size: 15px; text-align: center; padding: 50px 0; }
+.foot { margin-top: 30px; text-align: center; color: #c4c9d4; font-size: 12px; }

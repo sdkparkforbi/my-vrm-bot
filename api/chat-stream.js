@@ -15,8 +15,8 @@
 import { fetchContext, buildSystemPrompt } from './_lib/context.js'
 
 const BOT_ID = process.env.BOT_ID || ''
-// 미들턴 무상태 채팅 엔드포인트. 미설정 시 목업.
-const UPSTREAM = process.env.ONPREMISE_CHAT_STREAM_URL || ''
+// 미들턴 무상태 채팅 엔드포인트. env로 덮어쓸 수 있고, 없으면 기본값(aiforalab 중계) 사용.
+const UPSTREAM = process.env.ONPREMISE_CHAT_STREAM_URL || 'https://aiforalab.com/liveavatar-api/api.php?action=chat_stream'
 
 export const config = {
   api: { bodyParser: true, responseLimit: false },

@@ -4,7 +4,15 @@
   padding: 16px 20px 60px;
   color: #1f2330;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  height: 100vh;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
+/* 지식 목록이 길어져도 잡기 쉬운 스크롤바 (이 페이지 전용) */
+.wrap::-webkit-scrollbar { width: 12px; }
+.wrap::-webkit-scrollbar-track { background: #f1f2f6; }
+.wrap::-webkit-scrollbar-thumb { background: #c4c9d4; border-radius: 6px; border: 2px solid #f1f2f6; }
+.wrap::-webkit-scrollbar-thumb:hover { background: #a8aebd; }
 
 .topbar {
   display: flex;
